@@ -8,6 +8,7 @@
 </head>
 <body>
     <div id="ui-layer">
+        <!-- Left Panel: Logo & Name -->
         <div class="left-panel" id="login-screen">
             <h1 class="logo-title">PIG PROTOCOL</h1>
             <input type="text" id="playerName" value="CaptainPig73" placeholder="Enter Call Sign..." />
@@ -15,17 +16,63 @@
             <button class="menu-btn" style="background:#0099ff; box-shadow:0 5px 0 #0066cc;">PROFILE</button>
         </div>
 
+        <!-- Bottom Panel: Party Buttons -->
         <div class="bottom-panel" id="action-panel">
             <div class="weapon-info">CHAMELEON RIFLE V1 - Pig-Pink Stealth Active</div>
-            <button class="play-btn" id="joinBtn">PLAY</button>
+            
+            <div class="party-dock">
+                <button class="play-btn" id="createPartyBtn">CREATE PARTY</button>
+                <div class="join-party-box">
+                    <input type="text" id="partyCodeInput" placeholder="ENTER CODE..." />
+                    <button class="play-btn" id="joinPartyBtn" style="background: #0099ff; box-shadow: 0px 8px 0px #0066cc;">JOIN</button>
+                </div>
+            </div>
         </div>
 
+        <!-- Gameplay HUD (Initially Hidden) -->
         <div id="hud" style="display: none;">
             <div id="timer">TIME: 120s</div>
             <div id="ability-cooldown">CAMO: READY (PRESS C)</div>
-            <div id="view-mode">VIEW: FPP (PRESS V)</div>
+            <div id="view-mode">VIEW: TPP (PRESS V)</div>
         </div>
     </div>
+
+<!-- Exact GTA-Style Pose Wheel Overlay -->
+<div id="pose-wheel-overlay" class="hidden">
+    <div class="wheel-center-indicator">
+        <span id="selected-pose-title">SELECT POSE</span>
+    </div>
+
+    <!-- 1. Top: Starfish Face Down -->
+    <div class="wheel-sector" data-pose="starfish" style="--i:0;">
+        <div class="sector-content">⭐ STAR SPREAD</div>
+    </div>
+
+    <!-- 2. Top-Right: Kneel / Sit -->
+    <div class="wheel-sector" data-pose="kneel_sit" style="--i:1;">
+        <div class="sector-content">🧎 KNEEL SIT</div>
+    </div>
+
+    <!-- 3. Bottom-Right: Side Sleep -->
+    <div class="wheel-sector" data-pose="side_sleep" style="--i:2;">
+        <div class="sector-content">💤 SIDE SLEEP</div>
+    </div>
+
+    <!-- 4. Bottom: Reset / Cancel (Big X) -->
+    <div class="wheel-sector cancel-sector" data-pose="reset" style="--i:3;">
+        <div class="sector-content">❌ RESET</div>
+    </div>
+
+    <!-- 5. Bottom-Left: Vertical Stretch -->
+    <div class="wheel-sector" data-pose="stretch" style="--i:4;">
+        <div class="sector-content">🙌 STRETCH</div>
+    </div>
+
+    <!-- 6. Top-Left: Fetal Curl -->
+    <div class="wheel-sector" data-pose="fetal" style="--i:5;">
+        <div class="sector-content">🌀 FETAL CURL</div>
+    </div>
+</div>
     
     <script type="module" src="/src/main.js"></script>
 </body>

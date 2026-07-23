@@ -1,0 +1,21 @@
+{
+  "name": "cyber-chameleon",
+  "version": "1.0.0",
+  "description": "A fast-paced, networked 3D multiplayer hide-and-seek game built using **Three.js**, **Cannon-es (Physics)**, **Vite**, and **Socket.IO**. Control a low-poly Cyber-Pig equipped with active camouflage and advanced parkour mechanics!",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daksh6-9/mecha-chameleon-pig.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/daksh6-9/mecha-chameleon-pig/issues"
+  },
+  "homepage": "https://github.com/daksh6-9/mecha-chameleon-pig#readme"
+}

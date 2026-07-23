@@ -1,40 +1,26 @@
 # 🐖 Mecha Chameleon: Pig Protocol
 
-A fast-paced, networked 3D multiplayer hide-and-seek game built using **Three.js**, **Cannon-es (Physics)**, **Vite**, and **Socket.IO**. Control a low-poly Cyber-Pig equipped with active camouflage and advanced parkour mechanics!
+A web-based 3D multiplayer stealth hide-and-seek game built with **Three.js**, **Cannon-es**, **Socket.IO**, and **Vite**.
 
-## 🎮 Controls
-* **WASD**: RPG-Style steering relative to the camera view.
-* **Mouse**: Fluid third-person orbital camera / mouselook.
-* **Spacebar**: Double Jump.
-* **Left Shift**: Dash Forward (2-second cooldown).
-* **C Key**: Toggle Chameleon Active Camouflage (Turns 95% invisible to other players).
-* **V Key**: Toggle Perspective between First-Person (FPP) and Third-Person (TPP).
+## 🎮 Core Game Loop
+* **The Waiting Room (Lobby Arena):** Stand on the central elevated step to claim the **Hunter** role before the countdown timer expires!
+* **RGB Body Painting System (C Key):** Open an active color wheel and eyedropper tool to paint your pig model to match surrounding surface textures.
+* **GTA-Style Posture Wheel (Tab Key):** Morph into 6 distinct physical postures (Star Spread, Kneel Sit, Fetal Curl, Side Sleep, etc.) to mimic props.
+* **Surface Adhesion / Wall Stick:** Latch onto vertical walls and elevated surfaces to blend seamlessly into walls.
+* **Bot Matchmaking:** Spin up single-player sessions against AI bots or host private multiplayer parties!
 
----
+## 📂 System Documentation (`/docs`)
+- [Product Requirement Document (PRD)](docs/PRD.md)
+- [Technical Requirement Document (TRD)](docs/TRD.md)
+- [System Architecture & Data Airflow](docs/ARCHITECTURE_AIRFLOW.md)
+- [UI/UX Specification](docs/UI_UX_SPECIFICATION.md)
+- [Backend & Database Schema](docs/BACKEND_DATABASE_SCHEMA.md)
+- [Step-by-Step Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
 
-## 🛠️ Developer Setup (How to run on your laptop)
-
-Follow these steps exactly to pull the project and spin up the environment:
-
-### 1. Clone the Project
+## 🚀 Quickstart
 ```bash
-git clone https://github.com/daksh6-9/mecha-chameleon-pig.git
-cd mecha-chameleon-pig
+# Start Server
+cd server && npm install && node index.js
 
-### 2. Setup the Mainframe Server
-```bash
-cd server
-npm install
-node index.js
-
-The server will boot up and spin up a Socket.IO gateway on port 3000.
-
-### 3. Setup the Simulation Client
-Open a new, separate terminal window, go back to the root directory, and run:
-
-```bash
-cd client
-npm install
-npm run dev
-
-Vite will compile the assets. Click the http://localhost:5173 link generated in your terminal to drop into the grid!
+# Start Client (In a new terminal)
+cd client && npm install && npm run dev
