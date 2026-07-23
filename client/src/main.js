@@ -5,18 +5,17 @@ import { io } from 'socket.io-client';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
-// --- INITIALIZATION ---
+// --- GLOBAL ENGINE STATE ---
 const renderer = new GameRenderer();
 const physics = new PhysicsEngine();
-let socket;
-let playerBody;
-let mechaMesh;
+let socket = null;
+let playerBody = null;
+let mechaMesh = null;
 const otherPlayers = {}; 
 let isGameStarted = false;
-let isFPP = false; // Defaulting to TPP so you can see your pig immediately!
-let isCamouflaged = false;
-
-const clock = new THREE.Clock();
+let isFPP = false; 
+let currentRoomCode = '';
+let lastTime = performance.now();
 const input = { keys: {} };
 
 // --- RANDOM PIG CALL-SIGN GENERATOR ---
@@ -28,29 +27,23 @@ function generateRandomPigName() {
     const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
     const root = roots[Math.floor(Math.random() * roots.length)];
     const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
-    const num = Math.floor(Math.random() * 900) + 100; // Generates a number between 100 and 999
+    const num = Math.floor(Math.random() * 900) + 100;
 
-    // Randomly picks between 2 naming formats: "MisterPig09" or "PorkLord101"
-    if (Math.random() > 0.5) {
-        return `${prefix}${root}${num}`;
-    } else {
-        return `${root}${suffix}${num}`;
-    }
+    return Math.random() > 0.5 ? `${prefix}${root}${num}` : `${root}${suffix}${num}`;
 }
 
 // --- INPUT & PERSPECTIVE KEY LISTENERS ---
 window.addEventListener('keydown', (e) => { 
     input.keys[e.code] = true; 
     if (!isGameStarted) return;
-    if (e.code === 'KeyC') isCamouflaged = !isCamouflaged; 
     if (e.code === 'KeyV') isFPP = !isFPP; 
 });
 window.addEventListener('keyup', (e) => { input.keys[e.code] = false; });
 
 // --- MOUSELOOK POINTER LOCK ENGINE ---
 const sensitivity = 0.002;
-const pitchObject = new THREE.Object3D(); // Handles up/down look
-const yawObject = new THREE.Object3D();   // Handles left/right look
+const pitchObject = new THREE.Object3D(); 
+const yawObject = new THREE.Object3D();   
 yawObject.add(pitchObject);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -58,15 +51,12 @@ document.addEventListener('DOMContentLoaded', () => {
     renderer.scene.add(yawObject);
 });
 
-// Captures your cursor movements to rotate your game camera view
 document.addEventListener('mousemove', (event) => {
     if (document.pointerLockElement === document.body) {
         yawObject.rotation.y -= event.movementX * sensitivity;
         pitchObject.rotation.x -= event.movementY * sensitivity;
         
-        // Clamp up/down viewing so you don't flip upside down
         pitchObject.rotation.x = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, pitchObject.rotation.x));
-        
         renderer.camera.quaternion.setFromEuler(new THREE.Euler(pitchObject.rotation.x, yawObject.rotation.y, 0, 'YXZ'));
     }
 });
@@ -78,7 +68,7 @@ const DASH_FORCE = 80;
 let dashCooldown = 0;
 let dashActiveTimer = 0;
 
-// --- CYBER-PIG SOLDIER WITH GUN MODEL ---
+// --- REFACTORED CYBER-PIG SOLDIER (SLIM & PROPORTIONAL) ---
 function createCyberPigSoldier() {
     const pigGroup = new THREE.Group();
     const pigPinkMat = new THREE.MeshStandardMaterial({ 
@@ -86,36 +76,36 @@ function createCyberPigSoldier() {
     });
 
     // 1. Torso Body
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.9, 1.7), pigPinkMat);
-    body.position.y = 0.85; 
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 1.1), pigPinkMat);
+    body.position.y = 0.6; 
     pigGroup.add(body);
 
     // 2. Head
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.75, 0.75), pigPinkMat);
-    head.position.set(0, 1.15, -1.05); 
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), pigPinkMat);
+    head.position.set(0, 0.85, -0.7); 
     pigGroup.add(head);
 
     // 3. Snout
-    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.35, 0.25), pigPinkMat);
-    snout.position.set(0, 1.05, -1.55); 
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, 0.18), pigPinkMat);
+    snout.position.set(0, 0.8, -1.02); 
     pigGroup.add(snout);
 
     // 4. Legs
-    const legGeo = new THREE.BoxGeometry(0.25, 0.5, 0.25);
-    const legPositions = [[-0.45, 0.25, -0.6], [0.45, 0.25, -0.6], [-0.45, 0.25, 0.6], [0.45, 0.25, 0.6]];
+    const legGeo = new THREE.BoxGeometry(0.18, 0.4, 0.18);
+    const legPositions = [[-0.3, 0.2, -0.35], [0.3, 0.2, -0.35], [-0.3, 0.2, 0.35], [0.3, 0.2, 0.35]];
     legPositions.forEach(pos => {
         const leg = new THREE.Mesh(legGeo, pigPinkMat);
         leg.position.set(pos[0], pos[1], pos[2]);
         pigGroup.add(leg);
     });
 
-    // 5. Side-Mounted Blaster
+    // 5. Side-Mounted Blaster Rifle
     const rifleGroup = new THREE.Group();
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.1), pigPinkMat);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), pigPinkMat);
     barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0, -0.4);
+    barrel.position.set(0, 0, -0.3);
     rifleGroup.add(barrel);
-    rifleGroup.position.set(0.65, 1.1, -0.2); 
+    rifleGroup.position.set(0.48, 0.8, -0.1); 
     pigGroup.add(rifleGroup);
 
     return pigGroup;
@@ -127,81 +117,78 @@ let currentPose = 'reset';
 function applyPoseToPig(pigMesh, poseType) {
     if (!pigMesh) return;
 
-    // Extract individual body parts from the pig group
     const [body, head, snout, legFL, legFR, legBL, legBR, rifleGroup] = pigMesh.children;
 
-    // Reset all base mesh orientations first
     pigMesh.rotation.x = 0;
     pigMesh.rotation.z = 0;
-    body.position.set(0, 0.85, 0);
-    head.position.set(0, 1.15, -1.05);
-    snout.position.set(0, 1.05, -1.55);
+    body.position.set(0, 0.6, 0);
+    head.position.set(0, 0.85, -0.7);
+    snout.position.set(0, 0.8, -1.02);
     head.rotation.set(0, 0, 0);
 
-    legFL.position.set(-0.45, 0.25, -0.6);
-    legFR.position.set(0.45, 0.25, -0.6);
-    legBL.position.set(-0.45, 0.25, 0.6);
-    legBR.position.set(0.45, 0.25, 0.6);
+    legFL.position.set(-0.3, 0.2, -0.35);
+    legFR.position.set(0.3, 0.2, -0.35);
+    legBL.position.set(-0.3, 0.2, 0.35);
+    legBR.position.set(0.3, 0.2, 0.35);
 
     legFL.rotation.set(0, 0, 0);
     legFR.rotation.set(0, 0, 0);
     legBL.rotation.set(0, 0, 0);
     legBR.rotation.set(0, 0, 0);
 
-    if (rifleGroup) rifleGroup.position.set(0.65, 1.1, -0.2);
+    if (rifleGroup) rifleGroup.position.set(0.48, 0.8, -0.1);
 
     switch (poseType) {
-        case 'starfish': // 1. Flat face down on belly, legs splayed out sideways
+        case 'starfish':
             legFL.rotation.z = Math.PI / 2;
             legFR.rotation.z = -Math.PI / 2;
             legBL.rotation.z = Math.PI / 2;
             legBR.rotation.z = -Math.PI / 2;
-            body.position.y = 0.4;
-            head.position.y = 0.5;
-            snout.position.y = 0.4;
+            body.position.y = 0.3;
+            head.position.y = 0.4;
+            snout.position.y = 0.3;
             break;
 
-        case 'kneel_sit': // 2. Sitting upright with legs tucked back
-            pigMesh.rotation.x = -Math.PI / 4; // Rears torso back
+        case 'kneel_sit':
+            pigMesh.rotation.x = -Math.PI / 4;
             legBL.rotation.x = -Math.PI / 2;
             legBR.rotation.x = -Math.PI / 2;
             break;
 
-        case 'side_sleep': // 3. Rolled $90^\circ$ onto its flank side
+        case 'side_sleep':
             pigMesh.rotation.z = Math.PI / 2;
-            pigMesh.position.y = 0.4;
+            pigMesh.position.y = 0.3;
             break;
 
-        case 'stretch': // 4. Arms/Front legs raised straight up forward
+        case 'stretch':
             legFL.rotation.x = -Math.PI;
             legFR.rotation.x = -Math.PI;
-            legFL.position.y = 1.2;
-            legFR.position.y = 1.2;
+            legFL.position.y = 0.8;
+            legFR.position.y = 0.8;
             break;
 
-        case 'fetal': // 5. Curled into a tight compact ball
-            head.position.set(0, 0.7, -0.5);
-            snout.position.set(0, 0.5, -0.8);
-            legFL.position.set(-0.2, 0.3, -0.3);
-            legFR.position.set(0.2, 0.3, -0.3);
-            legBL.position.set(-0.2, 0.3, 0.3);
-            legBR.position.set(0.2, 0.3, 0.3);
+        case 'fetal':
+            head.position.set(0, 0.5, -0.4);
+            snout.position.set(0, 0.4, -0.6);
+            legFL.position.set(-0.15, 0.2, -0.2);
+            legFR.position.set(0.15, 0.2, -0.2);
+            legBL.position.set(-0.15, 0.2, 0.2);
+            legBR.position.set(0.15, 0.2, 0.2);
             break;
 
         case 'reset':
-        default: // 6. Standard Quadruped Stance
+        default:
             break;
     }
 }
 
-// --- ACTIVE MATCH INITIALIZER ---
+// --- ACTIVE MATCH INITIALIZER & NETWORK SOCKET CONNECT ---
 function initLobbyView() {
     mechaMesh = createCyberPigSoldier(); 
     renderer.scene.add(mechaMesh);
-    renderer.camera.position.set(0, 1.6, 3.5);
-    renderer.camera.lookAt(0, 1.3, 0);
+    renderer.camera.position.set(0, 1.4, 3.0);
+    renderer.camera.lookAt(0, 1.0, 0);
 
-    // Auto-fill the name field with a unique pig call-sign
     const nameInput = document.getElementById('playerName');
     if (nameInput) {
         nameInput.value = generateRandomPigName();
@@ -212,27 +199,21 @@ function initLobbyView() {
 
 function establishMatchConnection(playerName, partyCode, isCreating) {
     isGameStarted = true;
-    socket = io('http://localhost:3000');
     
-    socket.on('connect', () => {
-        socket.emit('joinRoom', {
-            username: playerName,
-            roomCode: partyCode.trim().toUpperCase(),
-            isHost: isCreating
-        });
-    });
+    const serverUrl = `http://${window.location.hostname}:3000`;
+    socket = io(serverUrl);
+    
+    currentRoomCode = partyCode.trim().toUpperCase();
 
-    // Network Multi-Room Listener bindings
-    socket.on('roomJoined', (confirmedRoomCode) => {
-        console.log(`Successfully locked into Party: ${confirmedRoomCode}`);
-        document.getElementById('ability-cooldown').innerText = `ROOM: ${confirmedRoomCode}`;
-    });
-
-    socket.on('init', (data) => {
-        console.log(`Connected to room session as: ${data.role}`);
+    // 1. ATTACH LISTENERS BEFORE EMITTING JOIN EVENT
+    socket.on('roomJoined', (confirmedCode) => {
+        console.log(`[NET] Room Joined Confirmed: ${confirmedCode}`);
+        const roomHud = document.getElementById('ability-cooldown');
+        if (roomHud) roomHud.innerText = `ROOM: ${confirmedCode}`;
     });
 
     socket.on('currentPlayers', (serverPlayers) => {
+        console.log('[NET] Received current players list:', serverPlayers);
         Object.keys(serverPlayers).forEach((id) => {
             if (id !== socket.id && !otherPlayers[id]) {
                 addOtherPlayer(serverPlayers[id]);
@@ -241,36 +222,64 @@ function establishMatchConnection(playerName, partyCode, isCreating) {
     });
 
     socket.on('newPlayer', (playerData) => {
-        if (!otherPlayers[playerData.id]) {
+        console.log('[NET] New player joined:', playerData);
+        if (playerData.id !== socket.id && !otherPlayers[playerData.id]) {
             addOtherPlayer(playerData);
         }
     });
 
     socket.on('playerMoved', (playerData) => {
         if (otherPlayers[playerData.id]) {
-            const enemy = otherPlayers[playerData.id];
-            enemy.position.copy(playerData.position);
+            const peerMesh = otherPlayers[playerData.id];
             
-            // Handle enemy mesh rotations
+            // Explicit positional copy
+            peerMesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
+
+            // Safe quaternion extraction (Fixes Three.js _x, _y NaN bug)
             if (playerData.rotation) {
-                enemy.quaternion.copy(playerData.rotation);
+                const r = playerData.rotation;
+                peerMesh.quaternion.set(
+                    r.x !== undefined ? r.x : (r._x || 0),
+                    r.y !== undefined ? r.y : (r._y || 0),
+                    r.z !== undefined ? r.z : (r._z || 0),
+                    r.w !== undefined ? r.w : (r._w || 1)
+                );
             }
 
-            enemy.traverse((child) => {
-                if (child.isMesh) {
-                    child.material.transparent = true;
-                    child.material.opacity = playerData.isCamouflaged ? 0.05 : 0.9;
-                }
-            });
+            if (playerData.posture) {
+                applyPoseToPig(peerMesh, playerData.posture);
+            }
+        }
+    });
+
+    socket.on('hunterCandidateUpdate', ({ candidateName }) => {
+        const hudTimer = document.getElementById('timer');
+        if (hudTimer && hudTimer.innerText.indexOf("CANDIDATE") === -1) {
+            hudTimer.innerText = `HUNTER CANDIDATE: ${candidateName}`;
         }
     });
 
     socket.on('playerDisconnected', (id) => {
+        console.log('[NET] Player disconnected:', id);
         if (otherPlayers[id]) {
             renderer.scene.remove(otherPlayers[id]);
             delete otherPlayers[id];
         }
     });
+
+    // 2. NOW EMIT JOIN ROOM
+    socket.on('connect', () => {
+        console.log(`[NET] Socket connected (${socket.id}). Joining room ${currentRoomCode}...`);
+        socket.emit('joinRoom', {
+            username: playerName,
+            roomCode: currentRoomCode,
+            isHost: isCreating
+        });
+    });
+
+    // Create Waiting Room Geometry and Physics Colliders
+    renderer.createWaitingRoom();
+    physics.createWaitingRoomPhysics();
 
     playerBody = physics.createPlayerBody();
     playerBody.addEventListener('collide', () => { jumpCount = 0; });
@@ -283,19 +292,27 @@ function establishMatchConnection(playerName, partyCode, isCreating) {
 }
 
 function addOtherPlayer(playerData) {
-    const pigMesh = createCyberPigSoldier();
-    pigMesh.position.copy(playerData.position);
-    renderer.scene.add(pigMesh);
-    otherPlayers[playerData.id] = pigMesh;
+    console.log(`[SCENE] Spawning remote pig mesh for: ${playerData.username} (${playerData.id})`);
+    const peerPigMesh = createCyberPigSoldier();
+    
+    if (playerData.position) {
+        peerPigMesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
+    }
+    
+    renderer.scene.add(peerPigMesh);
+    otherPlayers[playerData.id] = peerPigMesh;
 }
 
 // --- ENGINE HEARTBEAT LOOP ---
 function animate() {
     requestAnimationFrame(animate);
-    const dt = clock.getDelta();
+    // Calculate delta time in seconds
+    const currentTime = performance.now();
+    const dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
 
     if (!isGameStarted) {
-        if (mechaMesh) mechaMesh.rotation.y += 0.005; // Spin on home screen
+        if (mechaMesh) mechaMesh.rotation.y += 0.005; 
     } else {
         if (playerBody) {
             if (dashCooldown > 0) dashCooldown -= dt;
@@ -318,7 +335,7 @@ function animate() {
                 dashCooldown = 2.0;
             }
 
-            // WASD Movement Steered dynamically by Camera angle
+            // WASD Movement Steered by Camera Vector
             if (dashActiveTimer <= 0) {
                 const speed = 35;
                 const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(renderer.camera.quaternion);
@@ -350,84 +367,65 @@ function animate() {
             mechaMesh.position.copy(playerBody.position);
             mechaMesh.visible = !isFPP; 
 
-            // Handle camouflage transparency styling
-            mechaMesh.traverse((child) => {
-                if (child.isMesh) {
-                    child.material.transparent = true;
-                    child.material.opacity = isCamouflaged ? 0.05 : 0.9;
-                }
-            });
-
             // Camera Tracking Handler
             const pos = new THREE.Vector3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
             yawObject.position.copy(pos);
 
             if (isFPP) {
-                const fppCamPos = pos.clone().add(new THREE.Vector3(0, 1.15, -1.05)); 
+                const fppCamPos = pos.clone().add(new THREE.Vector3(0, 0.85, -0.7)); 
                 renderer.camera.position.copy(fppCamPos);
             } else {
                 const backDirection = new THREE.Vector3(0, 0, 1).applyQuaternion(renderer.camera.quaternion);
                 backDirection.y = 0; backDirection.normalize();
 
-                const tppCamPos = pos.clone().add(backDirection.multiplyScalar(4)).add(new THREE.Vector3(0, 1.5, 0));
+                const tppCamPos = pos.clone().add(backDirection.multiplyScalar(3.5)).add(new THREE.Vector3(0, 1.2, 0));
                 renderer.camera.position.copy(tppCamPos);
-                renderer.camera.lookAt(pos.clone().add(new THREE.Vector3(0, 0.8, 0))); 
+                renderer.camera.lookAt(pos.clone().add(new THREE.Vector3(0, 0.6, 0))); 
             }
 
-            socket.emit('updateState', {
-                position: playerBody.position,
-                rotation: renderer.camera.quaternion,
-                isCamouflaged: isCamouflaged
-            });
+            // --- HUNTER STEP BOUNDS INTERSECTION CHECK ---
+            const px = playerBody.position.x;
+            const py = playerBody.position.y;
+            const pz = playerBody.position.z;
+
+            const isStandingOnHunterStep = (px >= -2.0 && px <= 2.0) && 
+                                           (pz >= -2.0 && pz <= 2.0) && 
+                                           (py >= 0.5);
+
+            const hudTimer = document.getElementById('timer');
+            if (isStandingOnHunterStep) {
+                if (hudTimer) {
+                    hudTimer.innerText = "ROLE: HUNTER CANDIDATE 👑";
+                    hudTimer.style.color = "#ffcc00";
+                }
+            } else {
+                if (hudTimer) {
+                    hudTimer.innerText = "ROLE: RUNNER PIG 🐖";
+                    hudTimer.style.color = "#00ffcc";
+                }
+            }
+
+            // --- EXPLICITLY SERIALIZED POSITION & ROTATION TO SOCKET ---
+            if (socket) {
+                const q = renderer.camera.quaternion;
+                socket.emit('updateState', {
+                    position: { x: playerBody.position.x, y: playerBody.position.y, z: playerBody.position.z },
+                    rotation: { x: q.x, y: q.y, z: q.z, w: q.w },
+                    posture: currentPose
+                });
+
+                socket.emit('checkHunterStep', {
+                    roomCode: currentRoomCode,
+                    isOnStep: isStandingOnHunterStep
+                });
+            }
         }
         physics.step(dt);
     }
     renderer.render();
 }
 
-const poseOverlay = document.getElementById('pose-wheel-overlay');
-const poseTitle = document.getElementById('selected-pose-title');
-const sectors = document.querySelectorAll('.wheel-sector');
-
-// TAB KEY TOGGLE: Press and Hold or Tap TAB to trigger wheel
-window.addEventListener('keydown', (e) => {
-    if (e.code === 'Tab') {
-        e.preventDefault(); // Stop browser from focusing address bar
-        if (isGameStarted && poseOverlay.classList.contains('hidden')) {
-            poseOverlay.classList.remove('hidden');
-            document.exitPointerLock(); // Free mouse cursor for wheel selection
-        }
-    }
-});
-
-window.addEventListener('keyup', (e) => {
-    if (e.code === 'Tab') {
-        e.preventDefault();
-        if (isGameStarted && !poseOverlay.classList.contains('hidden')) {
-            poseOverlay.classList.add('hidden');
-            document.body.requestPointerLock(); // Re-lock cursor back to game control
-        }
-    }
-});
-
-// Wheel Sector Selection Clicks
-sectors.forEach(sector => {
-    sector.addEventListener('mouseenter', () => {
-        poseTitle.innerText = sector.innerText;
-    });
-
-    sector.addEventListener('click', () => {
-        const chosenPose = sector.getAttribute('data-pose');
-        currentPose = chosenPose;
-        applyPoseToPig(mechaMesh, chosenPose);
-        
-        // Hide wheel and lock back to camera
-        poseOverlay.classList.add('hidden');
-        document.body.requestPointerLock();
-    });
-});
-
-// --- UI BUTTON BINDINGS ---
+// --- UI BUTTON BINDINGS & TAB POSE WHEEL ENGINE ---
 const createPartyBtn = document.getElementById('createPartyBtn');
 const joinPartyBtn = document.getElementById('joinPartyBtn');
 const partyCodeInput = document.getElementById('partyCodeInput');
@@ -442,11 +440,62 @@ createPartyBtn.addEventListener('click', () => {
 joinPartyBtn.addEventListener('click', () => {
     const enteredCode = partyCodeInput.value;
     if (!enteredCode) {
-        alert("Please punch in a valid 4-letter Party Code!");
+        alert("Please enter a valid 4-letter Party Code!");
         return;
     }
     const userTag = nameInput.value || 'ClientPig';
     establishMatchConnection(userTag, enteredCode, false);
+});
+
+// TAB KEY WHEEL CONTROLLER
+const poseOverlay = document.getElementById('pose-wheel-overlay');
+const poseTitle = document.getElementById('selected-pose-title');
+const sectors = document.querySelectorAll('.wheel-sector');
+let pendingPose = currentPose;
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Tab') {
+        e.preventDefault();
+        if (isGameStarted && poseOverlay && poseOverlay.classList.contains('hidden')) {
+            poseOverlay.classList.remove('hidden');
+            document.exitPointerLock();
+        }
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (e.code === 'Tab') {
+        e.preventDefault();
+        if (isGameStarted && poseOverlay && !poseOverlay.classList.contains('hidden')) {
+            applyPoseToPig(mechaMesh, pendingPose);
+            currentPose = pendingPose;
+
+            poseOverlay.classList.add('hidden');
+            document.body.requestPointerLock();
+        }
+    }
+});
+
+sectors.forEach(sector => {
+    sector.addEventListener('mouseenter', () => {
+        const pose = sector.getAttribute('data-pose');
+        pendingPose = pose;
+        if (poseTitle) poseTitle.innerText = sector.innerText;
+        
+        sectors.forEach(s => s.classList.remove('active'));
+        sector.classList.add('active');
+    });
+
+    sector.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pose = sector.getAttribute('data-pose');
+        currentPose = pose;
+        pendingPose = pose;
+        applyPoseToPig(mechaMesh, pose);
+
+        if (poseOverlay) poseOverlay.classList.add('hidden');
+        document.body.requestPointerLock();
+    });
 });
 
 initLobbyView();

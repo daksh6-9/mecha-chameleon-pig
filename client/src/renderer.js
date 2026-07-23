@@ -49,4 +49,64 @@ export class GameRenderer {
     render() {
         this.composer.render();
     }
+    // --- WAITING ROOM & ARENA ENVIRONMENT BUILDER ---
+    createWaitingRoom() {
+        const roomGroup = new THREE.Group();
+        roomGroup.name = "waitingRoom";
+
+        // Common Materials
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x112b3c, roughness: 0.8 });
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x0b1d28, roughness: 0.5 });
+        const stepMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 0.4 });
+        const textPlaneMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 0.2 });
+
+        // 1. Floor Plane (30x30 units)
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        roomGroup.add(floor);
+
+        // 2. Enclosing 4 Walls (Height: 10 units)
+        const wallGeo = new THREE.BoxGeometry(30, 10, 1);
+        
+        // Back Wall (Scoreboard Wall)
+        const backWall = new THREE.Mesh(wallGeo, wallMat);
+        backWall.position.set(0, 5, -15);
+        roomGroup.add(backWall);
+
+        // Front Wall (Title Wall)
+        const frontWall = new THREE.Mesh(wallGeo, wallMat);
+        frontWall.position.set(0, 5, 15);
+        roomGroup.add(frontWall);
+
+        // Left Wall
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 30), wallMat);
+        leftWall.position.set(-15, 5, 0);
+        roomGroup.add(leftWall);
+
+        // Right Wall
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 30), wallMat);
+        rightWall.position.set(15, 5, 0);
+        roomGroup.add(rightWall);
+
+        // 3. Central "Hunter Step" (Square Step in the center)
+        // Box dimensions: Width 4m, Height 0.6m, Depth 4m
+        const hunterStep = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 4), stepMat);
+        hunterStep.position.set(0, 0.3, 0);
+        hunterStep.name = "hunterStep";
+        roomGroup.add(hunterStep);
+
+        // 4. Back Wall Scoreboard Display Banner
+        const scoreboardBanner = new THREE.Mesh(new THREE.PlaneGeometry(16, 6), textPlaneMat);
+        scoreboardBanner.position.set(0, 5.5, -14.4);
+        roomGroup.add(scoreboardBanner);
+
+        // 5. Front Wall Title Banner ("MECHA CHAMELEON PIG PROTOCOL")
+        const titleBanner = new THREE.Mesh(new THREE.PlaneGeometry(20, 4), textPlaneMat);
+        titleBanner.position.set(0, 6, 14.4);
+        titleBanner.rotation.y = Math.PI; // Face inward towards room
+        roomGroup.add(titleBanner);
+
+        this.scene.add(roomGroup);
+        return { hunterStep, roomGroup };
+    }
 }
