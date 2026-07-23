@@ -1,0 +1,28 @@
+# 🔄 Architecture & Data Airflow Specification
+
+## 1. System Topology
+
+[ Browser Client 1 ] <--- WebSockets (Socket.IO) ---> [ Node.js Gateway ]
+[ Browser Client 2 ] <-------------------------------> [  State Manager   ]
+|
+v
+[ In-Memory Store ]
+
+
+---
+
+## 2. Data Flow Lifecycle
+
+### Phase A: Room Creation & Bot Spawning
+1. Client requests `CREATE_PARTY` or `START_BOT_MATCH`.
+2. Server instantiates room structure `rooms[code]`. If Bot Match is selected, server spawns $N$ AI bot objects into the array.
+
+### Phase B: Waiting Room & Hunter Step Detection
+1. Clients broadcast position data at $60\text{ Hz}$.
+2. Server evaluates positions against the central Hunter Step bounding box:
+   $$\text{IsStandingOnStep} = (X_{\text{min}} \le P_x \le X_{\text{max}}) \land (Z_{\text{min}} \le P_z \le Z_{\text{max}})$$
+3. Timer hits 0 $\rightarrow$ Server assigns `role = 'Hunter'` to the step occupant and broadcasts `MATCH_START`.
+
+### Phase C: Active Match Cycle (Painting & Transformation)
+1. **Paint Event:** Client raycasts mouse coordinates against world geometry $\rightarrow$ derives Hex/RGB color $\rightarrow$ updates local UV texture $\rightarrow$ emits `PAINT_UPDATE` payload to room.
+2. **Pose Event:** Client changes bone transforms $\rightarrow$ emits `POSE_UPDATE` payload.

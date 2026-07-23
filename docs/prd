@@ -1,123 +1,43 @@
-Here is a complete, production-ready **`PRD.md`** (Product Requirement Document) tailored specifically for your project. You can drop this file directly into the root folder of your project repository alongside your `README.md`.
-
----
-
-# `PRD.md`
-
 # 📄 Product Requirement Document (PRD)
 
 ## Project Title: **Mecha Chameleon: Pig Protocol**
-
-**Document Version:** 1.0.0
-
-**Status:** In Development
-
-**Target Architecture:** Client-Server Node/Vite Stack
+**Version:** 2.0.0  
+**Status:** Architecture Revamp  
+**Target:** Web Browsers (WebGL 2.0 / Socket.IO)
 
 ---
 
-## 1. Executive Summary & Product Vision
-
-**Mecha Chameleon: Pig Protocol** is a fast-paced, web-based 3D multiplayer stealth and hide-and-seek game built using Three.js, Cannon-es physics, and Socket.IO. Players control low-poly "Cyber-Pig Soldiers" outfitted with active camouflage (optical cloaking), parkour abilities, dynamic pose transformation mechanics, and shoulder-mounted blaster weaponry.
-
-The goal is to deliver an accessible browser gaming experience that pairs tactical stealth/disguise mechanics (inspired by prop hunt and stealth games) with high-mobility platforming and custom party matchmaking.
+## 1. Product Overview & Core Loop
+**Mecha Chameleon: Pig Protocol** is an asymmetric 3D multiplayer stealth hide-and-seek game. Players take on the role of low-poly pigs capable of morphing their skeletal postures, sticking to vertical walls, and painting their skin surfaces with an RGB eyedropper palette to blend into environmental textures. One designated **Hunter** wielding a shotgun must track down and eliminate all hidden pigs before time runs out.
 
 ---
 
-## 2. Core Player Mechanics & Controls
-
-### 2.1 Navigation & Camera Architecture
-
-* **RPG-Style Directional Movement (WASD):** Movement is calculated dynamically relative to the camera's horizontal viewing vector $\vec{V}_{\text{cam}}$, allowing natural steering in any direction.
-* **Automatic Snout Orientation:** The pig's 3D mesh automatically rotates its longitudinal axis towards its movement vector using $\theta = \text{atan2}(x, z) + \pi$.
-* **Dual Camera Perspective (V Key Toggle):**
-* **First-Person Perspective (FPP):** Anchored inside the head node at eye-level ($y = 1.15, z = -1.05$).
-* **Third-Person Perspective (TPP):** Spherical orbit camera positioned dynamically behind the player ($4.0\text{m}$ offset, $1.5\text{m}$ eye level) tracking the torso.
-
-
-* **Mouselook Engine:** Pointer-lock based camera orbit with pitch clamping between $-64^\circ$ and $+64^\circ$ ($\pm \frac{\pi}{2.5}\text{ rad}$).
-
-### 2.2 Mobility & Active Abilities
-
-* **Double Jump (Spacebar):** Allows two consecutive vertical impulses ($v_y = 15\text{ m/s}$) per ground contact event.
-* **Dash Thrust (Left Shift):** Applies a high-velocity directional impulse ($F = 80\text{ m/s}$) along the horizontal camera facing vector with a 2.0-second cooldown.
-* **Active Camouflage (C Key):** Toggles material opacity between $90\%$ (Visible) and $5\%$ (Stealth Cloaked) to blend into environmental structures.
-
-### 2.3 Radial Pose Wheel Engine (Tab Key)
-
-* **GTA-V Style Interface:** Holding `TAB` pauses pointer lock and overlays a 6-sector radial menu with background blur.
-* **Skeletal Transformations:** Hovering/clicking a sector alters bone translations and rotational matrices of the 3D pig model to mimic environmental props/hiding positions:
-1. 🐾 **Quadruped / Reset:** Standard standing soldier stance.
-2. ⭐ **Star Spread:** Flat belly prone with limbs splayed outward.
-3. 🧎 **Kneel Sit:** Reared torso sitting posture.
-4. 💤 **Side Sleep:** $90^\circ$ lateral roll onto flank.
-5. 🙌 **Stretch:** Vertical standing front leg extension.
-6. 🌀 **Fetal Curl:** Compact spherical leg tuck.
-7. ❌ **Reset (Bottom Sector):** Instant cancellation back to base stance.
-
-
+## 2. User Roles & Matchmaking
+1. **Runner Pig:** Must hide, paint, deform posture, and adhere to walls to avoid detection.
+2. **Hunter:** Wields a shotgun, tracks disguised pigs, and eliminates them within a specified time limit.
+3. **AI Bots:** Auto-fill engine supporting 10–20 AI-driven bot pigs for single-player / fill matches.
 
 ---
 
-## 3. Technical & System Architecture
+## 3. Game Lifecycle & Key Features
 
-### 3.1 Tech Stack
+### 3.1 Main Menu
+* **3D Viewport:** Center-rotating preview pig mesh.
+* **Action Buttons:** `CREATE PARTY`, `JOIN PARTY`, and `PLAY VS BOTS (10-20 AI)`.
 
-* **Client Framework:** Vite + Modern Vanilla JavaScript ES6 Modules
-* **3D Rendering Pipeline:** Three.js (WebGL Renderer)
-* **Physics Simulation Engine:** Cannon-es (Rigid body contact solvers & collision tracking)
-* **Real-time Networking:** Socket.IO Client / Express Server
-* **Version Control:** Git / GitHub (Feature-branch workflow)
+### 3.2 The Waiting Room (Pre-Game Lobby)
+* **Physical Arena:** Enclosed 4-wall waiting room with a dynamic score-board wall and game logo wall.
+* **Hunter Selection Tile:** A central elevated step. Players compete to stand on this tile before the lobby timer expires.
+* **Selection Logic:** The player standing on the tile when time reaches zero becomes the Hunter. If contested or empty, a random player is selected.
 
-### 3.2 Network Synchronization & Room Architecture
-
-* **Isolated Multi-Room Gateway:** The backend server uses Socket.IO namespaces to partition players into private room channels (`rooms[roomCode]`) using generated 4-character alphanumeric session keys (e.g., `A4X9`).
-* **State Broadcast Loop:** Updates position ($\vec{P}$), camera rotation ($\vec{R}$), active camouflage state, and assigned player role (`Hunter` vs. `Runner`) across room members at $60\text{ Hz}$.
-* **Garbage Collection:** Server automatically purges empty room objects upon member disconnect to prevent memory leaks.
-
----
-
-## 4. User Interface (UI) & Experience (UX)
-
-### 4.1 Lobby & Home Screen
-
-* **3D Canvas Viewport:** Features a rotating preview mesh of the active Cyber-Pig Soldier with a side-mounted blaster on a retro grid.
-* **Procedural Call-Sign Generator:** Auto-populates creative pig call-signs (e.g., `MisterPig102`, `BaconLord809`, `CaptainSwine404`) on every DOM load.
-* **Party Management Dock:**
-* **CREATE PARTY:** Instantly spins up a new server room instance and copies the room code to the HUD.
-* **JOIN PARTY:** Text input bar supporting direct 4-letter room code entry.
-
-
-
-### 4.2 In-Game HUD
-
-* **Room Code Indicator:** Displays active session chamber key.
-* **Ability Indicators:** Displays real-time Camouflage status and Perspective state (FPP/TPP).
+### 3.3 Hiding Mechanics (Runners)
+* **Body Resizing:** Slimmer, re-proportioned pig model (reduced box depth/width).
+* **RGB Paint Brush System (C Key):** Replaces toggle camouflage. Opens an active HUD color picker and environment color eyedropper allowing players to paint body materials.
+* **GTA-Style Pose Wheel (Tab Key):** Radial menu with 6 bone-deforming postures (Star Spread, Fetal Curl, Kneel Sit, Side Sleep, Stretch, Reset).
+* **Wall Adhesion / Surface Stick:** Ability to latch onto vertical planes/walls to blend as wall props.
 
 ---
 
-## 5. Non-Functional Requirements (NFRs)
-
-* **Performance Target:** Maintain $\ge 60\text{ FPS}$ on integrated graphics across standard web browsers (Chrome, Edge, Firefox, Brave).
-* **Latency Tolerances:** Network synchronization delta should remain $\le 50\text{ ms}$ on local area network (LAN) setups.
-* **Cross-Laptop Compatibility:** Client bundle size under $3\text{ MB}$ for rapid load times across local networks.
-
----
-
-## 6. Development & Deployment Workflow
-
-### 6.1 Repository Branching Strategy
-
-* **`main`:** Stable production code.
-* **`feature/*` or `fix/*`:** Isolated branches for testing physics, UI overlays, and multiplayer synchronization prior to merging.
-
-### 6.2 Local Development Commands
-
-```bash
-# Terminal 1: Run Server Gateway
-cd server && npm install && node index.js
-
-# Terminal 2: Run Client Simulation
-cd client && npm install && npm run dev
-
-```
+## 4. Victory Conditions
+* **Hunter Win:** Eliminate all hidden pig players before the match timer expires.
+* **Runners Win:** At least one pig survives until the match timer reaches 0:00.

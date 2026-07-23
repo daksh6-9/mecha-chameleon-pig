@@ -1,0 +1,29 @@
+# 🛠️ Technical Requirement Document (TRD)
+
+## Project Title: **Mecha Chameleon: Pig Protocol**
+
+---
+
+## 1. Rendering & Canvas Architecture
+* **Graphics Library:** Three.js (WebGLRenderer).
+* **Canvas Resolution:** Dynamic window sizing ($100\text{vw} \times 100\text{vh}$) with pixel ratio scaling ($1.5 - 2.0$).
+* **Shading & Painting System:** Custom CanvasTexture applied to `MeshStandardMaterial` or dynamic vertex color attributes allowing real-time UV coordinate painting via raycasting.
+
+---
+
+## 2. Physics & Surface Adhesion (Cannon-es)
+* **Raycast Wall-Sticking:** Downward and horizontal raycasts detect vertical normal vectors ($\vec{N}$). When colliding with walls during airtime, physics gravity is set to zero ($g = 0$) and a locking constraint locks the body to the plane.
+* **Body Geometry Refactoring:**
+  * Torso dimensions reduced from $1.1 \times 0.9 \times 1.7$ to $0.8 \times 0.6 \times 1.1$ to fix the "fat pig" profile.
+
+---
+
+## 3. Waiting Room Logic & Tile Collisions
+* **Step-Bound AABB Detection:** The central step bounding box triggers a `Raycast / Contact Material` event when a player mesh intersects it.
+* **Timer Manager:** 30-second pre-game countdown tracked server-side to resolve Hunter assignment deterministically.
+
+---
+
+## 4. AI Bot Architecture
+* **State Machine (FSM):** Idle -> Patrol -> Find Surface -> Sample Color -> Adopt Pose -> Lock Position.
+* **Pathfinding:** Simple NavMesh or Random Bounded Steering Vectors across the level bounds.

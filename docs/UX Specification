@@ -1,0 +1,22 @@
+# 🎨 UI/UX Specification
+
+## 1. Color Palette & Typography
+* **Primary Accent:** Neon Cyan (`#00ffcc`)
+* **Secondary Accent:** Cyber Pink (`#ff0055`)
+* **Hunter Warning Color:** Vivid Gold (`#ffcc00`)
+* **Font Family:** `Impact`, `Arial Black`, sans-serif (Retro Arcade Vibe)
+
+---
+
+## 2. Screen Wireframes & Layouts
+
+### 2.1 Home Screen
+```text
++-------------------------------------------------------------+
+| [LOGO] MECHA CHAMELEON: PIG PROTOCOL                        |
+| [Call Sign Input: CaptainPig73]                             |
+|                                                             |
+|                   (Rotating Pig Model)                      |
+|                                                             |
+|  [ CREATE PARTY ]   [ JOIN CODE: ____ ] [ PLAY VS BOTS ]    |
++-------------------------------------------------------------+
