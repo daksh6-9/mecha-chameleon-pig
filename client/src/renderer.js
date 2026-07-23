@@ -1,112 +1,191 @@
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 
-export class GameRenderer {
-    constructor() {
-        this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x050510, 0.02);
-        
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setClearColor(0x050510);
-        document.body.appendChild(this.renderer.domElement);
+// --- HELPER FUNCTION: DYNAMIC CANVAS TEXTURE GENERATOR ---
+function createTextTexture(text, bgColor = '#112b3c', textColor = '#00ffcc') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
 
-        // Cyberpunk Post-Processing (Neon Glow)
-        const renderScene = new RenderPass(this.scene, this.camera);
-        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-        bloomPass.threshold = 0.2;
-        bloomPass.strength = 1.2;
-        bloomPass.radius = 0.5;
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        this.composer = new EffectComposer(this.renderer);
-        this.composer.addPass(renderScene);
-        this.composer.addPass(bloomPass);
+    ctx.strokeStyle = textColor;
+    ctx.lineWidth = 10;
+    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
 
-        this.buildLevel();
-        
-        // Handle Window Resizing on Windows
-        window.addEventListener('resize', () => {
-            this.camera.aspect = window.innerWidth / window.innerHeight;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.composer.setSize(window.innerWidth, window.innerHeight);
+    ctx.fillStyle = textColor;
+    ctx.font = 'bold 54px Impact, Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const lines = text.split('\n');
+    if (lines.length === 1) {
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    } else {
+        lines.forEach((line, idx) => {
+            ctx.fillText(line, canvas.width / 2, 80 + idx * 60);
         });
     }
 
-    buildLevel() {
-        // Floor grid
-        const gridHelper = new THREE.GridHelper(100, 100, 0x00ffff, 0x003333);
-        this.scene.add(gridHelper);
+    return new THREE.CanvasTexture(canvas);
+}
 
-        // Ambient cyber lighting
-        const ambientLight = new THREE.AmbientLight(0x222244);
+// --- HELPER FUNCTION: HUMAN HUNTER MODEL BUILDER ---
+export function createHumanHunterModel() {
+    const hunterGroup = new THREE.Group();
+    const armorMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.8 });
+    const clothMat = new THREE.MeshStandardMaterial({ color: 0x0055ff, roughness: 0.6 });
+
+    // Torso / Jacket
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.4), clothMat);
+    torso.position.y = 1.15;
+    hunterGroup.add(torso);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), skinMat);
+    head.position.y = 1.8;
+    hunterGroup.add(head);
+
+    // Legs
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.7, 0.3), armorMat);
+    legL.position.set(-0.2, 0.35, 0);
+    const legR = legL.clone();
+    legR.position.x = 0.2;
+    hunterGroup.add(legL);
+    hunterGroup.add(legR);
+
+    // Arms holding shotgun
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.2), clothMat);
+    armL.position.set(-0.45, 1.2, 0);
+    armL.rotation.x = -Math.PI / 4;
+    hunterGroup.add(armL);
+
+    // Shotgun weapon
+    const shotgun = new THREE.Group();
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.2), armorMat);
+    barrel.rotation.x = Math.PI / 2;
+    shotgun.add(barrel);
+    shotgun.position.set(0.3, 1.2, -0.4);
+    hunterGroup.add(shotgun);
+
+    return hunterGroup;
+}
+
+// --- HELPER FUNCTION: PROCEDURAL HOUSE MAP BUILDER ---
+export function buildHouseMap(scene) {
+    const houseGroup = new THREE.Group();
+    houseGroup.name = "houseMap";
+
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xdddddd });
+    const couchMat = new THREE.MeshStandardMaterial({ color: 0xcc3333 });
+
+    // Living Room Floor
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), woodMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(50, 0, 0);
+    houseGroup.add(floor);
+
+    // Outer Boundary Walls
+    const wallGeo = new THREE.BoxGeometry(40, 8, 1);
+    const bWall1 = new THREE.Mesh(wallGeo, wallMat); bWall1.position.set(50, 4, -20);
+    const bWall2 = new THREE.Mesh(wallGeo, wallMat); bWall2.position.set(50, 4, 20);
+    const bWall3 = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 40), wallMat); bWall3.position.set(30, 4, 0);
+    const bWall4 = new THREE.Mesh(new THREE.BoxGeometry(1, 8, 40), wallMat); bWall4.position.set(70, 4, 0);
+    houseGroup.add(bWall1, bWall2, bWall3, bWall4);
+
+    // Furniture Props (Couch, Tables for Hiding)
+    const couch = new THREE.Mesh(new THREE.BoxGeometry(6, 1.5, 3), couchMat);
+    couch.position.set(45, 0.75, -10);
+    houseGroup.add(couch);
+
+    const table = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 4), woodMat);
+    table.position.set(55, 0.6, 5);
+    houseGroup.add(table);
+
+    scene.add(houseGroup);
+}
+
+// --- MAIN GAME RENDERER CLASS ---
+export class GameRenderer {
+    constructor() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x0b1d28);
+
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(this.renderer.domElement);
+
+        // Lighting Setup
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
         this.scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        this.scene.add(dirLight);
+
+        // Handle Window Resizing
+        window.addEventListener('resize', () => this.onWindowResize());
     }
 
-    render() {
-        this.composer.render();
-    }
-    // --- WAITING ROOM & ARENA ENVIRONMENT BUILDER ---
+    // Class Method: Build Waiting Room
     createWaitingRoom() {
         const roomGroup = new THREE.Group();
         roomGroup.name = "waitingRoom";
 
-        // Common Materials
         const wallMat = new THREE.MeshStandardMaterial({ color: 0x112b3c, roughness: 0.8 });
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x0b1d28, roughness: 0.5 });
         const stepMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 0.4 });
-        const textPlaneMat = new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 0.2 });
 
-        // 1. Floor Plane (30x30 units)
+        // Floor (30x30)
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), floorMat);
         floor.rotation.x = -Math.PI / 2;
         roomGroup.add(floor);
 
-        // 2. Enclosing 4 Walls (Height: 10 units)
+        // Enclosing Walls
         const wallGeo = new THREE.BoxGeometry(30, 10, 1);
-        
-        // Back Wall (Scoreboard Wall)
-        const backWall = new THREE.Mesh(wallGeo, wallMat);
-        backWall.position.set(0, 5, -15);
-        roomGroup.add(backWall);
+        const backWall = new THREE.Mesh(wallGeo, wallMat); backWall.position.set(0, 5, -15);
+        const frontWall = new THREE.Mesh(wallGeo, wallMat); frontWall.position.set(0, 5, 15);
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 30), wallMat); leftWall.position.set(-15, 5, 0);
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 30), wallMat); rightWall.position.set(15, 5, 0);
 
-        // Front Wall (Title Wall)
-        const frontWall = new THREE.Mesh(wallGeo, wallMat);
-        frontWall.position.set(0, 5, 15);
-        roomGroup.add(frontWall);
+        roomGroup.add(backWall, frontWall, leftWall, rightWall);
 
-        // Left Wall
-        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 30), wallMat);
-        leftWall.position.set(-15, 5, 0);
-        roomGroup.add(leftWall);
-
-        // Right Wall
-        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 30), wallMat);
-        rightWall.position.set(15, 5, 0);
-        roomGroup.add(rightWall);
-
-        // 3. Central "Hunter Step" (Square Step in the center)
-        // Box dimensions: Width 4m, Height 0.6m, Depth 4m
+        // Central Hunter Step Box
         const hunterStep = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 4), stepMat);
         hunterStep.position.set(0, 0.3, 0);
         hunterStep.name = "hunterStep";
         roomGroup.add(hunterStep);
 
-        // 4. Back Wall Scoreboard Display Banner
-        const scoreboardBanner = new THREE.Mesh(new THREE.PlaneGeometry(16, 6), textPlaneMat);
-        scoreboardBanner.position.set(0, 5.5, -14.4);
-        roomGroup.add(scoreboardBanner);
+        // Scoreboard Banner on Back Wall
+        const scoreTex = createTextTexture("SCOREBOARD\n1. PORKLORD: 300\n2. BAKEBOI: 150", "#0b1d28", "#ffcc00");
+        const scoreboard = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), new THREE.MeshBasicMaterial({ map: scoreTex }));
+        scoreboard.position.set(0, 5.5, -14.4);
+        roomGroup.add(scoreboard);
 
-        // 5. Front Wall Title Banner ("MECHA CHAMELEON PIG PROTOCOL")
-        const titleBanner = new THREE.Mesh(new THREE.PlaneGeometry(20, 4), textPlaneMat);
+        // Game Title Banner on Front Wall
+        const titleTex = createTextTexture("MECHA CHAMELEON: PIG PROTOCOL", "#0b1d28", "#00ffcc");
+        const titleBanner = new THREE.Mesh(new THREE.PlaneGeometry(18, 4), new THREE.MeshBasicMaterial({ map: titleTex }));
         titleBanner.position.set(0, 6, 14.4);
-        titleBanner.rotation.y = Math.PI; // Face inward towards room
+        titleBanner.rotation.y = Math.PI;
         roomGroup.add(titleBanner);
 
         this.scene.add(roomGroup);
         return { hunterStep, roomGroup };
+    }
+
+    onWindowResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    render() {
+        this.renderer.render(this.scene, this.camera);
     }
 }

@@ -4,21 +4,15 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
-// Rooms Store: { 'ROOMCODE': { players: { 'socket_id': { id, username, position, rotation, posture, color, isHunter } } } }
 const rooms = {};
 
 io.on('connection', (socket) => {
-    console.log(`[NET] Client connected: ${socket.id}`);
+    console.log(`[NET] Connected: ${socket.id}`);
 
-    // --- 1. JOIN / CREATE ROOM ---
-    socket.on('joinRoom', ({ username, roomCode, isHost }) => {
+    // --- 1. JOIN ROOM ---
+    socket.on('joinRoom', ({ username, roomCode }) => {
         const code = (roomCode || 'LOBBY').trim().toUpperCase();
         socket.currentRoom = code;
         socket.username = username || 'CyberPig';
@@ -26,105 +20,171 @@ io.on('connection', (socket) => {
         if (!rooms[code]) {
             rooms[code] = {
                 players: {},
-                hunterCandidate: 'NONE'
+                lobbyTimer: 200,
+                matchTimer: 120,
+                gameState: 'WAITING_ROOM', // WAITING_ROOM | HIDING_PHASE | HUNTING_PHASE
+                timerInterval: null
             };
-            console.log(`[ROOM] Created private room: ${code}`);
+
+            // Start 200-second Lobby Countdown Loop
+            rooms[code].timerInterval = setInterval(() => {
+                const r = rooms[code];
+                if (!r) return;
+
+                if (r.gameState === 'WAITING_ROOM') {
+                    if (r.lobbyTimer > 0) r.lobbyTimer--;
+                    if (r.lobbyTimer <= 0) {
+                        startMatch(code);
+                    }
+                } else if (r.gameState === 'HIDING_PHASE') {
+                    if (r.matchTimer > 0) r.matchTimer--;
+                    if (r.matchTimer <= 0) {
+                        r.gameState = 'HUNTING_PHASE';
+                        io.to(code).emit('huntingPhaseStarted');
+                    }
+                }
+
+                // Broadcast live clock tick
+                io.to(code).emit('timerUpdate', {
+                    lobbyTimer: r.lobbyTimer,
+                    matchTimer: r.matchTimer,
+                    gameState: r.gameState
+                });
+            }, 1000);
         }
 
         socket.join(code);
 
-        // Define initial player profile
-        const newPlayerData = {
+        rooms[code].players[socket.id] = {
             id: socket.id,
             username: socket.username,
-            position: { x: (Math.random() - 0.5) * 10, y: 1.0, z: (Math.random() - 0.5) * 10 },
+            position: { x: 0, y: 1.0, z: 0 },
             rotation: { x: 0, y: 0, z: 0, w: 1 },
-            color: '#ff0055',
-            posture: 'reset',
+            isReady: false,
             isOnStep: false,
             isHunter: false
         };
 
-        // Save into room store
-        rooms[code].players[socket.id] = newPlayerData;
-
-        // A. Confirm room join to sender
+        // Confirm room join
         socket.emit('roomJoined', code);
-
-        // B. Send ALL existing players in room to the newly joined player
         socket.emit('currentPlayers', rooms[code].players);
+        socket.to(code).emit('newPlayer', rooms[code].players[socket.id]);
 
-        // C. Notify ALL OTHER players in this room about the new player
-        socket.to(code).emit('newPlayer', newPlayerData);
+        // Send immediate Timer & Ready status updates to the newly joined player
+        const allPlayers = Object.values(rooms[code].players);
+        const readyCount = allPlayers.filter(p => p.isReady).length;
+        
+        io.to(code).emit('readyStatusUpdate', {
+            readyCount: readyCount,
+            totalPlayers: allPlayers.length
+        });
 
-        console.log(`[ROOM] ${socket.username} (${socket.id}) entered [${code}]. Total room players: ${Object.keys(rooms[code].players).length}`);
+        socket.emit('timerUpdate', {
+            lobbyTimer: rooms[code].lobbyTimer,
+            matchTimer: rooms[code].matchTimer,
+            gameState: rooms[code].gameState
+        });
     });
 
-    // --- 2. LIVE REAL-TIME MOVEMENT & STATE TICK ---
+    // --- 2. READY TOGGLE HANDLER ---
+    socket.on('toggleReady', () => {
+        const code = socket.currentRoom;
+        if (code && rooms[code] && rooms[code].players[socket.id]) {
+            const p = rooms[code].players[socket.id];
+            p.isReady = !p.isReady;
+
+            const allPlayers = Object.values(rooms[code].players);
+            const readyCount = allPlayers.filter(player => player.isReady).length;
+
+            // Broadcast updated ready fraction (e.g. 1/2, 2/2)
+            io.to(code).emit('readyStatusUpdate', {
+                readyCount: readyCount,
+                totalPlayers: allPlayers.length
+            });
+
+            // If ALL players are ready, jump timer down to 10s!
+            if (readyCount === allPlayers.length && readyCount > 0) {
+                rooms[code].lobbyTimer = Math.min(rooms[code].lobbyTimer, 10);
+                io.to(code).emit('timerUpdate', {
+                    lobbyTimer: rooms[code].lobbyTimer,
+                    matchTimer: rooms[code].matchTimer,
+                    gameState: rooms[code].gameState
+                });
+            }
+        }
+    });
+
+    // --- 3. POSITION & STEP UPDATES ---
+    socket.on('checkHunterStep', ({ isOnStep }) => {
+        const code = socket.currentRoom;
+        if (code && rooms[code] && rooms[code].players[socket.id]) {
+            rooms[code].players[socket.id].isOnStep = isOnStep;
+        }
+    });
+
     socket.on('updateState', (state) => {
         const code = socket.currentRoom;
         if (code && rooms[code] && rooms[code].players[socket.id]) {
             const p = rooms[code].players[socket.id];
-            
-            // Update local memory
             p.position = state.position || p.position;
             p.rotation = state.rotation || p.rotation;
-            if (state.posture) p.posture = state.posture;
-            if (state.color) p.color = state.color;
 
-            // Broadcast movement payload ONLY to peers inside the same room
             socket.to(code).emit('playerMoved', {
                 id: socket.id,
                 position: p.position,
                 rotation: p.rotation,
-                posture: p.posture,
-                color: p.color
+                posture: state.posture
             });
         }
     });
 
-    // --- 3. HUNTER STEP CANDIDATE LOGIC ---
-    socket.on('checkHunterStep', ({ roomCode, isOnStep }) => {
-        const code = socket.currentRoom || (roomCode ? roomCode.toUpperCase() : null);
-        if (code && rooms[code] && rooms[code].players[socket.id]) {
-            rooms[code].players[socket.id].isOnStep = isOnStep;
+    // --- 4. START MATCH LIFECYCLE ---
+    function startMatch(code) {
+        const room = rooms[code];
+        if (!room) return;
 
-            const candidates = Object.values(rooms[code].players).filter(p => p.isOnStep);
-            let candidateName = "NONE";
-            if (candidates.length === 1) {
-                candidateName = candidates[0].username;
-            } else if (candidates.length > 1) {
-                candidateName = "CONTESTED (RANDOM DRAW)";
-            }
+        room.gameState = 'HIDING_PHASE';
+        const playersArr = Object.values(room.players);
+        const stepCandidates = playersArr.filter(p => p.isOnStep);
 
-            rooms[code].hunterCandidate = candidateName;
-            io.to(code).emit('hunterCandidateUpdate', { candidateName });
+        let hunterId = null;
+        if (stepCandidates.length === 1) {
+            hunterId = stepCandidates[0].id;
+        } else if (playersArr.length > 0) {
+            const randomIdx = Math.floor(Math.random() * playersArr.length);
+            hunterId = playersArr[randomIdx].id;
         }
-    });
 
-    // --- 4. DISCONNECT CLEANUP ---
+        playersArr.forEach(p => {
+            p.isHunter = (p.id === hunterId);
+        });
+
+        io.to(code).emit('matchStarted', {
+            hunterId: hunterId,
+            spawnOffset: { x: 50, y: 1.0, z: 0 }
+        });
+    }
+
+    // --- 5. DISCONNECT CLEANUP ---
     socket.on('disconnect', () => {
         const code = socket.currentRoom;
-        console.log(`[NET] Client disconnected: ${socket.id}`);
-
         if (code && rooms[code]) {
             delete rooms[code].players[socket.id];
-            
-            // Tell other clients in room to remove the player mesh
             socket.to(code).emit('playerDisconnected', socket.id);
 
-            // Clean up empty rooms
-            if (Object.keys(rooms[code].players).length === 0) {
+            const remaining = Object.values(rooms[code].players);
+            if (remaining.length === 0) {
+                clearInterval(rooms[code].timerInterval);
                 delete rooms[code];
-                console.log(`[ROOM] Closed empty room: ${code}`);
+            } else {
+                io.to(code).emit('readyStatusUpdate', {
+                    readyCount: remaining.filter(p => p.isReady).length,
+                    totalPlayers: remaining.length
+                });
             }
         }
     });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`\n==================================================`);
-    console.log(`🚀 MECHA CHAMELEON PIG SERVER ONLINE ON PORT ${PORT}`);
-    console.log(`==================================================\n`);
-});
+const PORT = 3000;
+server.listen(PORT, () => console.log(`🚀 Server listening on port ${PORT}`));

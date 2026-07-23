@@ -31,11 +31,13 @@
 
         <!-- Gameplay HUD (Initially Hidden) -->
         <div id="hud" style="display: none;">
-            <div id="timer">TIME: 120s</div>
+            <div id="timer" style="font-size: 1.8rem; color: #00ffcc;">LOBBY TIMER: 200s</div>
+            <div id="role-indicator" style="font-size: 1.2rem; color: #ffcc00; margin-top: 4px;">ROLE: RUNNER PIG 🐖</div>
+            <div id="ready-status">READY COUNT: 0/0</div>
+            <button id="readyToggleBtn" class="menu-btn" style="background: #00cc66; font-size: 1rem; padding: 6px 15px; margin-top: 5px;">READY UP</button>
             <div id="ability-cooldown">CAMO: READY (PRESS C)</div>
             <div id="view-mode">VIEW: TPP (PRESS V)</div>
         </div>
-    </div>
 
 <!-- Exact GTA-Style Pose Wheel Overlay -->
 <div id="pose-wheel-overlay" class="hidden">

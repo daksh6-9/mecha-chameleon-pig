@@ -1,5 +1,5 @@
 import './style.css';
-import { GameRenderer } from './renderer.js';
+import { GameRenderer, createHumanHunterModel, buildHouseMap } from './renderer.js';
 import { PhysicsEngine } from './physics.js';
 import { io } from 'socket.io-client';
 import * as THREE from 'three';
@@ -15,6 +15,7 @@ const otherPlayers = {};
 let isGameStarted = false;
 let isFPP = false; 
 let currentRoomCode = '';
+
 let lastTime = performance.now();
 const input = { keys: {} };
 
@@ -40,7 +41,7 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => { input.keys[e.code] = false; });
 
-// --- MOUSELOOK POINTER LOCK ENGINE ---
+// --- RESTORED MOUSELOOK RIG & CAMERA ---
 const sensitivity = 0.002;
 const pitchObject = new THREE.Object3D(); 
 const yawObject = new THREE.Object3D();   
@@ -55,7 +56,6 @@ document.addEventListener('mousemove', (event) => {
     if (document.pointerLockElement === document.body) {
         yawObject.rotation.y -= event.movementX * sensitivity;
         pitchObject.rotation.x -= event.movementY * sensitivity;
-        
         pitchObject.rotation.x = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, pitchObject.rotation.x));
         renderer.camera.quaternion.setFromEuler(new THREE.Euler(pitchObject.rotation.x, yawObject.rotation.y, 0, 'YXZ'));
     }
@@ -115,7 +115,7 @@ function createCyberPigSoldier() {
 let currentPose = 'reset';
 
 function applyPoseToPig(pigMesh, poseType) {
-    if (!pigMesh) return;
+    if (!pigMesh || !pigMesh.children || pigMesh.children.length < 8) return;
 
     const [body, head, snout, legFL, legFR, legBL, legBR, rifleGroup] = pigMesh.children;
 
@@ -182,10 +182,11 @@ function applyPoseToPig(pigMesh, poseType) {
     }
 }
 
-// --- ACTIVE MATCH INITIALIZER & NETWORK SOCKET CONNECT ---
+// --- RESTORED HOME LOBBY PREVIEW ---
 function initLobbyView() {
-    mechaMesh = createCyberPigSoldier(); 
+    mechaMesh = createCyberPigSoldier();
     renderer.scene.add(mechaMesh);
+    
     renderer.camera.position.set(0, 1.4, 3.0);
     renderer.camera.lookAt(0, 1.0, 0);
 
@@ -197,6 +198,7 @@ function initLobbyView() {
     animate();
 }
 
+// --- ACTIVE MATCH INITIALIZER & NETWORK SOCKET CONNECT ---
 function establishMatchConnection(playerName, partyCode, isCreating) {
     isGameStarted = true;
     
@@ -205,7 +207,7 @@ function establishMatchConnection(playerName, partyCode, isCreating) {
     
     currentRoomCode = partyCode.trim().toUpperCase();
 
-    // 1. ATTACH LISTENERS BEFORE EMITTING JOIN EVENT
+    // 1. ATTACH LISTENERS
     socket.on('roomJoined', (confirmedCode) => {
         console.log(`[NET] Room Joined Confirmed: ${confirmedCode}`);
         const roomHud = document.getElementById('ability-cooldown');
@@ -213,7 +215,7 @@ function establishMatchConnection(playerName, partyCode, isCreating) {
     });
 
     socket.on('currentPlayers', (serverPlayers) => {
-        console.log('[NET] Received current players list:', serverPlayers);
+        console.log('[NET] Received current players:', serverPlayers);
         Object.keys(serverPlayers).forEach((id) => {
             if (id !== socket.id && !otherPlayers[id]) {
                 addOtherPlayer(serverPlayers[id]);
@@ -232,10 +234,9 @@ function establishMatchConnection(playerName, partyCode, isCreating) {
         if (otherPlayers[playerData.id]) {
             const peerMesh = otherPlayers[playerData.id];
             
-            // Explicit positional copy
+            peerMesh.visible = true;
             peerMesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
 
-            // Safe quaternion extraction (Fixes Three.js _x, _y NaN bug)
             if (playerData.rotation) {
                 const r = playerData.rotation;
                 peerMesh.quaternion.set(
@@ -252,10 +253,42 @@ function establishMatchConnection(playerName, partyCode, isCreating) {
         }
     });
 
-    socket.on('hunterCandidateUpdate', ({ candidateName }) => {
+    socket.on('readyStatusUpdate', ({ readyCount, totalPlayers }) => {
+        const readyHud = document.getElementById('ready-status');
+        if (readyHud) readyHud.innerText = `READY COUNT: ${readyCount}/${totalPlayers}`;
+    });
+
+    socket.on('timerUpdate', ({ lobbyTimer, matchTimer, gameState }) => {
         const hudTimer = document.getElementById('timer');
-        if (hudTimer && hudTimer.innerText.indexOf("CANDIDATE") === -1) {
-            hudTimer.innerText = `HUNTER CANDIDATE: ${candidateName}`;
+        if (!hudTimer) return;
+
+        if (gameState === 'WAITING_ROOM') {
+            hudTimer.innerText = `LOBBY TIMER: ${lobbyTimer}s`;
+            hudTimer.style.color = "#00ffcc";
+        } else if (gameState === 'HIDING_PHASE') {
+            hudTimer.innerText = `HIDE PHASE: ${matchTimer}s`;
+            hudTimer.style.color = "#ffcc00";
+        } else {
+            hudTimer.innerText = `HUNTING ACTIVE! RUN!`;
+            hudTimer.style.color = "#ff0055";
+        }
+    });
+
+    socket.on('matchStarted', ({ hunterId, spawnOffset }) => {
+        buildHouseMap(renderer.scene);
+
+        if (socket.id === hunterId) {
+            alert("YOU ARE THE HUNTER! Wait 120s while runners hide!");
+            if (mechaMesh) renderer.scene.remove(mechaMesh);
+            mechaMesh = createHumanHunterModel();
+            renderer.scene.add(mechaMesh);
+        } else {
+            alert("YOU ARE A RUNNER PIG! Teleporting to House... Hide and Paint!");
+            playerBody.position.set(
+                spawnOffset.x + (Math.random() - 0.5) * 10, 
+                spawnOffset.y, 
+                spawnOffset.z + (Math.random() - 0.5) * 10
+            );
         }
     });
 
@@ -267,9 +300,9 @@ function establishMatchConnection(playerName, partyCode, isCreating) {
         }
     });
 
-    // 2. NOW EMIT JOIN ROOM
+    // 2. EMIT JOIN ROOM
     socket.on('connect', () => {
-        console.log(`[NET] Socket connected (${socket.id}). Joining room ${currentRoomCode}...`);
+        console.log(`[NET] Connected to gateway (${socket.id}). Joining room ${currentRoomCode}...`);
         socket.emit('joinRoom', {
             username: playerName,
             roomCode: currentRoomCode,
@@ -293,10 +326,21 @@ function establishMatchConnection(playerName, partyCode, isCreating) {
 
 function addOtherPlayer(playerData) {
     console.log(`[SCENE] Spawning remote pig mesh for: ${playerData.username} (${playerData.id})`);
+    
+    // Create new independent pig mesh for remote peer
     const peerPigMesh = createCyberPigSoldier();
     
+    // Ensure remote mesh is visible and correctly positioned
+    peerPigMesh.visible = true;
+    
     if (playerData.position) {
-        peerPigMesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
+        peerPigMesh.position.set(
+            playerData.position.x || 0,
+            playerData.position.y || 0.6,
+            playerData.position.z || 0
+        );
+    } else {
+        peerPigMesh.position.set(0, 0.6, 0);
     }
     
     renderer.scene.add(peerPigMesh);
@@ -306,26 +350,26 @@ function addOtherPlayer(playerData) {
 // --- ENGINE HEARTBEAT LOOP ---
 function animate() {
     requestAnimationFrame(animate);
-    // Calculate delta time in seconds
+    
     const currentTime = performance.now();
     const dt = (currentTime - lastTime) / 1000;
     lastTime = currentTime;
 
     if (!isGameStarted) {
-        if (mechaMesh) mechaMesh.rotation.y += 0.005; 
+        if (mechaMesh) mechaMesh.rotation.y += 0.01; 
     } else {
         if (playerBody) {
             if (dashCooldown > 0) dashCooldown -= dt;
             if (dashActiveTimer > 0) dashActiveTimer -= dt;
 
-            // Double Jump handling
+            // Double Jump
             if (input.keys['Space'] && jumpCount < MAX_JUMPS) {
                 playerBody.velocity.y = 15;
                 jumpCount++;
                 input.keys['Space'] = false;
             }
 
-            // Dash handling
+            // Dash
             if (input.keys['ShiftLeft'] && dashCooldown <= 0) {
                 const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(renderer.camera.quaternion);
                 forward.y = 0; forward.normalize();
@@ -363,7 +407,7 @@ function animate() {
                 }
             }
 
-            // Sync graphics position to physics engine coordinates
+            // Sync graphics position to physics
             mechaMesh.position.copy(playerBody.position);
             mechaMesh.visible = !isFPP; 
 
@@ -383,7 +427,7 @@ function animate() {
                 renderer.camera.lookAt(pos.clone().add(new THREE.Vector3(0, 0.6, 0))); 
             }
 
-            // --- HUNTER STEP BOUNDS INTERSECTION CHECK ---
+            // HUNTER STEP BOUNDS INTERSECTION CHECK
             const px = playerBody.position.x;
             const py = playerBody.position.y;
             const pz = playerBody.position.z;
@@ -392,20 +436,18 @@ function animate() {
                                            (pz >= -2.0 && pz <= 2.0) && 
                                            (py >= 0.5);
 
-            const hudTimer = document.getElementById('timer');
-            if (isStandingOnHunterStep) {
-                if (hudTimer) {
-                    hudTimer.innerText = "ROLE: HUNTER CANDIDATE 👑";
-                    hudTimer.style.color = "#ffcc00";
-                }
-            } else {
-                if (hudTimer) {
-                    hudTimer.innerText = "ROLE: RUNNER PIG 🐖";
-                    hudTimer.style.color = "#00ffcc";
+            const roleHud = document.getElementById('role-indicator');
+            if (roleHud) {
+                if (isStandingOnHunterStep) {
+                    roleHud.innerText = "ROLE: HUNTER CANDIDATE 👑";
+                    roleHud.style.color = "#ffcc00";
+                } else {
+                    roleHud.innerText = "ROLE: RUNNER PIG 🐖";
+                    roleHud.style.color = "#00ffcc";
                 }
             }
 
-            // --- EXPLICITLY SERIALIZED POSITION & ROTATION TO SOCKET ---
+            // SERIALIZE POSITION & ROTATION TO SOCKET
             if (socket) {
                 const q = renderer.camera.quaternion;
                 socket.emit('updateState', {
@@ -430,6 +472,18 @@ const createPartyBtn = document.getElementById('createPartyBtn');
 const joinPartyBtn = document.getElementById('joinPartyBtn');
 const partyCodeInput = document.getElementById('partyCodeInput');
 const nameInput = document.getElementById('playerName');
+
+const readyBtn = document.getElementById('readyToggleBtn');
+let isReady = false;
+
+if (readyBtn) {
+    readyBtn.addEventListener('click', () => {
+        isReady = !isReady;
+        readyBtn.innerText = isReady ? "CANCEL READY" : "READY UP";
+        readyBtn.style.background = isReady ? "#ff0055" : "#00cc66";
+        if (socket) socket.emit('toggleReady');
+    });
+}
 
 createPartyBtn.addEventListener('click', () => {
     const randomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
